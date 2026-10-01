@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local LLM Chat</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    #messages {
+      min-height: 250px;
+      border: 1px solid #ccc;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .message {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin-bottom: 16px;
+    }
+
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+
+    #status {
+      min-height: 24px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Local LLM Chat</h1>
+  <p>Chat with your Ollama model.</p>
+
+  <div id="messages" role="log" aria-live="polite"></div>
+
+  <form id="chat-form">
+    <label for="prompt">Your message</label>
+    <textarea
+      id="prompt"
+      rows="3"
+      maxlength="4000"
+      required
+    ></textarea>
+
+    <button id="send" type="submit">Send</button>
+    <button id="clear" type="button">Clear chat</button>
+  </form>
+
+  <p id="status" role="status"></p>
+
+  <script>
+    const form = document.getElementById("chat-form");
+    const promptInput = document.getElementById("prompt");
+    const messages = document.getElementById("messages");
+    const sendButton = document.getElementById("send");
+    const clearButton = document.getElementById("clear");
+    const status = document.getElementById("status");
+
+    let history = [];
+    let busy = false;
+
+    function addMessage(role, content) {
+      const element = document.createElement("div");
+      element.className = "message";
+      element.textContent = `${role}: ${content}`;
+      messages.appendChild(element);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const prompt = promptInput.value.trim();
+      if (!prompt || busy) return;
+
+      busy = true;
+      sendButton.disabled = true;
+      clearButton.disabled = true;
+      status.textContent = "Generating…";
+
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            prompt: prompt,
+            history: history.slice(-10)
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            typeof data.detail === "string"
+              ? data.detail
+              : "Request failed. Check your input."
+          );
+        }
+
+        addMessage("You", prompt);
+        addMessage("Assistant", data.answer);
+
+        history.push(
+          { role: "user", content: prompt },
+          { role: "assistant", content: data.answer }
+        );
+
+        history = history.slice(-10);
+        promptInput.value = "";
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        busy = false;
+        sendButton.disabled = false;
+        clearButton.disabled = false;
+        promptInput.focus();
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      history = [];
+      messages.replaceChildren();
+      status.textContent = "";
+      promptInput.focus();
+    });
+  </script>
+</body>
+</html>

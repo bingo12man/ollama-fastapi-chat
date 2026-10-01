@@ -4,6 +4,9 @@ from pydantic import BaseModel,Field
 import os
 from dotenv import load_dotenv
 from typing import Literal
+from pathlib import Path
+from fastapi.responses import FileResponse
+
 
 load_dotenv()
 
@@ -18,6 +21,13 @@ OLLAMA_MODEL = os.getenv(
 )
 
 app=FastAPI()
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+@app.get("/", response_class=FileResponse)
+def home():
+    return FileResponse(BASE_DIR / "index.html")
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
