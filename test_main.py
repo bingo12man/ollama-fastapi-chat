@@ -120,3 +120,20 @@ def test_history_message_too_long():
     )
 
     assert response.status_code == 422
+
+@respx.mock
+def test_missing_model():
+    respx.post(OLLAMA_CHAT_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"error": "model not found"},
+        )
+    )
+
+    response = client.post(
+        "/chat",
+        json={"prompt": "Hello"},
+    )
+
+    assert response.status_code == 503
+    assert "ollama pull" in response.json()["detail"]
