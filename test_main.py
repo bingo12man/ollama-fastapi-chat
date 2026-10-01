@@ -104,3 +104,19 @@ def test_chat_sends_history():
         {"role": "assistant", "content": "I can help with that."},
         {"role": "user", "content": "What am I learning?"},
     ]
+
+def test_history_message_too_long():
+    response = client.post(
+        "/chat",
+        json={
+            "prompt": "Explain more.",
+            "history": [
+                {
+                    "role": "assistant",
+                    "content": "a" * 4001,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422

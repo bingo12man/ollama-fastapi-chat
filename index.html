@@ -118,8 +118,8 @@
         addMessage("Assistant", data.answer);
 
         history.push(
-          { role: "user", content: prompt },
-          { role: "assistant", content: data.answer }
+        { role: "user", content: prompt },
+        { role: "assistant", content: data.answer.slice(0, 4000) }
         );
 
         history = history.slice(-10);
