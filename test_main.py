@@ -1,7 +1,7 @@
 import httpx
 import respx
 from fastapi.testclient import TestClient
-
+import json
 from main import app, OLLAMA_BASE_URL
 
 client = TestClient(app)
@@ -62,3 +62,45 @@ def test_ollama_timeout():
     response = client.post("/chat", json={"prompt": "Hello"})
 
     assert response.status_code == 504
+
+
+@respx.mock
+def test_chat_sends_history():
+    route = respx.post(OLLAMA_CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "message": {
+                    "role": "assistant",
+                    "content": "You are learning Python.",
+                }
+            },
+        )
+    )
+
+    response = client.post(
+        "/chat",
+        json={
+            "prompt": "What am I learning?",
+            "history": [
+                {
+                    "role": "user",
+                    "content": "I am learning Python.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "I can help with that.",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+
+    sent_body = json.loads(route.calls.last.request.content)
+
+    assert sent_body["messages"] == [
+        {"role": "user", "content": "I am learning Python."},
+        {"role": "assistant", "content": "I can help with that."},
+        {"role": "user", "content": "What am I learning?"},
+    ]
