@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel,Field
 import os
 from dotenv import load_dotenv
+from typing import Literal
 
 load_dotenv()
 
@@ -18,8 +19,17 @@ OLLAMA_MODEL = os.getenv(
 
 app=FastAPI()
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
 class ChatRequest(BaseModel):
-    prompt: str = Field(min_length=1,max_length=4000)
+    prompt: str = Field(min_length=1, max_length=4000)
+    history: list[ChatMessage] = Field(
+        default_factory=list,
+        max_length=10,
+    )
 
 @app.get("/health")
 def health():
@@ -34,21 +44,41 @@ async def chat(request:ChatRequest):
             detail="Prompt cannot contain only spaces"
         )
 
+    messages = []
+
+    for message in request.history:
+        content = message.content.strip()
+
+        if not content:
+            raise HTTPException(
+                status_code=422,
+                detail="History messages cannot contain only spaces.",
+            )
+
+        messages.append({
+            "role": message.role,
+            "content": content,
+        })
+
+    messages.append({
+        "role": "user",
+        "content": prompt,
+    })
+
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json={
                     "model": OLLAMA_MODEL,
-                    "messages":[
-                        {"role":"user","content":request.prompt}
-                    ],
+                    "messages": messages,
                     "stream":False,
                 },
             )
 
             response.raise_for_status()
             data=response.json()
+
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=504,
