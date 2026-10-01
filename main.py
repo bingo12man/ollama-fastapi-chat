@@ -42,17 +42,13 @@ class ChatRequest(BaseModel):
         max_length=10,
     )
 
-@app.get("/health")
-def health():
-    return {"status":"ok"}
+def build_messages(request: ChatRequest):
+    prompt = request.prompt.strip()
 
-@app.post("/chat")
-async def chat(request:ChatRequest):
-    prompt=request.prompt.strip()
     if not prompt:
         raise HTTPException(
             status_code=422,
-            detail="Prompt cannot contain only spaces"
+            detail="Prompt cannot contain only spaces.",
         )
 
     messages = []
@@ -76,6 +72,15 @@ async def chat(request:ChatRequest):
         "content": prompt,
     })
 
+    return messages
+
+@app.get("/health")
+def health():
+    return {"status":"ok"}
+
+@app.post("/chat")
+async def chat(request:ChatRequest):
+    messages = build_messages(request)
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -132,32 +137,7 @@ async def chat(request:ChatRequest):
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    prompt = request.prompt.strip()
-
-    if not prompt:
-        raise HTTPException(
-            status_code=422,
-            detail="Prompt cannot contain only spaces.",
-        )
-
-    messages = []
-
-    for message in request.history:
-        content = message.content.strip()
-
-        if not content:
-            raise HTTPException(
-                status_code=422,
-                detail="History messages cannot contain only spaces.",
-            )
-
-        messages.append({
-            "role": message.role,
-            "content": content,
-        })
-
-    messages.append({"role": "user", "content": prompt})
-
+    messages = build_messages(request)
     def event(data):
         return json.dumps(data) + "\n"
 
