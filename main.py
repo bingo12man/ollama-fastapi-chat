@@ -96,7 +96,7 @@ async def chat(request:ChatRequest):
         )
 
     except httpx.HTTPStatusError as exc:
-        if exc.resonse.status_code == 404:
+        if exc.response.status_code == 404:
             raise HTTPException(
                 status_code=503,
                 detail=(
