@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from typing import Literal
 from pathlib import Path
 from fastapi.responses import FileResponse
-
+import json
+from fastapi.responses import StreamingResponse
 
 load_dotenv()
 
@@ -129,3 +130,98 @@ async def chat(request:ChatRequest):
 
     return {"answer": answer}
 
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    prompt = request.prompt.strip()
+
+    if not prompt:
+        raise HTTPException(
+            status_code=422,
+            detail="Prompt cannot contain only spaces.",
+        )
+
+    messages = []
+
+    for message in request.history:
+        content = message.content.strip()
+
+        if not content:
+            raise HTTPException(
+                status_code=422,
+                detail="History messages cannot contain only spaces.",
+            )
+
+        messages.append({
+            "role": message.role,
+            "content": content,
+        })
+
+    messages.append({"role": "user", "content": prompt})
+
+    def event(data):
+        return json.dumps(data) + "\n"
+
+    async def generate():
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "messages": messages,
+                        "stream": True,
+                    },
+                ) as response:
+                    response.raise_for_status()
+
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+
+                        chunk = json.loads(line)
+
+                        if "error" in chunk:
+                            yield event({
+                                "error": "Ollama reported a generation error."
+                            })
+                            return
+
+                        text = chunk.get("message", {}).get("content", "")
+
+                        if not isinstance(text, str):
+                            raise TypeError("Expected text.")
+
+                        if text:
+                            yield event({"content": text})
+
+                        if chunk.get("done"):
+                            yield event({"done": True})
+                            return
+
+                    yield event({
+                        "error": "Ollama stopped before completing the answer."
+                    })
+
+        except httpx.TimeoutException:
+            yield event({"error": "Ollama timed out."})
+
+        except httpx.HTTPStatusError:
+            yield event({
+                "error": "Ollama returned an HTTP error. Check the model."
+            })
+
+        except httpx.RequestError:
+            yield event({
+                "error": "Cannot communicate with Ollama."
+            })
+
+        except (ValueError, TypeError, AttributeError):
+            yield event({
+                "error": "Ollama returned an invalid response."
+            })
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+    )
